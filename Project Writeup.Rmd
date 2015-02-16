@@ -1,0 +1,75 @@
+---
+title: "Practical Machine Learning Project"
+author: "Emma Bassein"
+date: "February 12, 2015"
+output: html_document
+---
+
+The purpose of this project is to build a model to predict if a person is lifting weights correctly based on a series of sensor data. The dataset used was the Human Activity Recognition Weight Lifting Exercises Dataset from Groupware@LES
+
+Cleaning and Preprocessing
+The data consists of 19622 observations of 160 variables. Many of the variables are primarily NA or blank values and were removed from the dataset, as were the time stamps and participant's name. Additionally, variables that were read in as factors were corrected to numeric.
+
+```{r}
+library(caret)
+library(rpart)
+library(tree)
+library(gbm)
+dat = read.csv("~/Desktop/pml-training.csv")
+str(dat)
+summary(dat)
+set.seed(3511)
+for (i in 7:159) {
+  dat[,i] <- as.numeric(as.character(dat[,i]))
+}
+
+data <- dat[,colSums(is.na(dat))==0]
+data <- data[,8:60]
+str(data)
+```
+Using a simple rpart classification tree model with all of the remaining variables, we are able to achieve a 50% in-sample accuracy rate across the five classifications.
+
+```{r}
+treemodel <- train(classe~., method = "rpart",data=data)
+treefit <- predict(treemodel,data)
+confusionMatrix(treefit,data$classe)
+```
+
+Random forest models increase accuracy by combining many tree pridictions together, but are computationally more intensive. Before attempting a random forest model, the remaining 52 variables were preprocessed using principal component analysis to reduce the variance. The PCs were calculated such that at least 80% of the variance was preserved, resulting in 12 PCs. For reference, with a threshold of 95% of variance retained, 25 PCs would be included.
+
+```{r}
+preProc <- preProcess(data[,-53],method="pca",thres= .8)
+PC <- predict(preProc,data[,-53])
+PCdata <-PC
+PCdata$classe <- data$classe
+```
+
+
+The principal components derived in the previous step were used to fit a random forest model to the training data. I used 30 trees to reduce computational intensity (default is 500), while still maintaining a high in sample accuracy rate of 99.9%. 
+
+```{r}
+rfmodel <- train(classe~., method = "rf", ntree = 30, data=PCdata)
+plot(rfmodel$final)
+rffit <- predict(rfmodel,PCdata)
+confusionMatrix(rffit,data$classe)
+```
+
+Out of sample accuracy is expect to be 95% based on the boostrapping results.
+```{r}
+rfmodel
+```
+
+Finally, the model was used to predict the classifications of the 20 test sets
+
+```{r}
+testdat = read.csv("~/Desktop/pml-testing.csv")
+str(testdat)
+for (i in 7:159) {
+  testdat[,i] <- as.numeric(as.character(testdat[,i]))
+}
+testing <- testdat[,colSums(is.na(testdat))==0]
+testing <- testing[,8:60]
+TestPC <- predict(preProc,testing[,-53])
+TestPCdata <-TestPC
+Prediction <- predict(rfmodel,TestPCdata)
+```
